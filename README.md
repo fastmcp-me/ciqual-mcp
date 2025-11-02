@@ -12,6 +12,10 @@ An MCP (Model Context Protocol) server providing SQL access to the ANSES Ciqual 
 
 ![ANSES Ciqual Database](assets/ciqual-banner.jpg)
 
+<a href="https://glama.ai/mcp/servers/@zzgael/ciqual-mcp">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@zzgael/ciqual-mcp/badge" alt="ANSES Ciqual Server MCP server" />
+</a>
+
 </div>
 
 ## Features
