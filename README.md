@@ -2,7 +2,6 @@
 
 <div align="center">
 
-[![MCP Badge](https://lobehub.com/badge/mcp/zzgael-ciqual-mcp)](https://lobehub.com/mcp/zzgael-ciqual-mcp)
 [![Tests](https://github.com/zzgael/ciqual-mcp/actions/workflows/tests.yml/badge.svg)](https://github.com/zzgael/ciqual-mcp/actions/workflows/tests.yml)
 [![PyPI version](https://badge.fury.io/py/ciqual-mcp.svg)](https://badge.fury.io/py/ciqual-mcp)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
