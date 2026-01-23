@@ -26,41 +26,44 @@ DB_PATH = Path.home() / ".ciqual" / "ciqual.db"
 @mcp.tool()
 async def query(sql: str) -> list[dict]:
     """Execute SQL query on ANSES Ciqual French food composition database.
-    
-    IMPORTANT: Get ALL nutrients in ONE query! Don't make multiple queries for the same food.
-    
-    EXAMPLE - Get complete nutrition for a food:
-    SELECT f.alim_nom_eng, n.const_nom_eng, c.teneur, n.unit
+
+    ⚠️ EFFICIENCY: Follow this 2-step workflow to minimize queries!
+
+    STEP 1 - SEARCH (one query):
+    SELECT alim_code, alim_nom_fr FROM foods_fts WHERE foods_fts MATCH 'steak OR boeuf';
+    Note: FTS uses OR between words. For "steak sauce poivre", search "steak" first.
+
+    STEP 2 - GET ALL NUTRIENTS (one query with JOIN):
+    SELECT f.alim_nom_fr, n.const_nom_fr, c.teneur, n.unit
     FROM foods f
     JOIN composition c ON f.alim_code = c.alim_code
     JOIN nutrients n ON c.const_code = n.const_code
-    WHERE f.alim_code = 23000;  -- Returns ALL 60+ nutrients in one query!
-    
-    SCHEMA:
-    • foods: 3,185+ foods with French/English names
-      - alim_code (PK), alim_nom_fr, alim_nom_eng, alim_grp_code
-    
-    • nutrients: ~60+ nutrients with units
-      - const_code (PK), const_nom_fr, const_nom_eng, unit
-    
-    • composition: nutritional values per 100g
-      - alim_code, const_code, teneur (value), code_confiance (A/B/C/D)
-    
-    • foods_fts: full-text search for fuzzy matching
-      - Use: WHERE foods_fts MATCH 'search term'
-    
-    COMMON QUERIES:
-    1. Search foods: SELECT * FROM foods_fts WHERE foods_fts MATCH 'cake';
-    2. Get ALL nutrients: JOIN all 3 tables, no WHERE clause on nutrients
-    3. Get specific nutrients: Use IN clause with multiple codes at once
-    
+    WHERE f.alim_code = <code_from_step1>;
+
+    🛑 STOP after finding a matching food! Don't keep searching with different terms.
+
+    COMPOUND DISHES (steak + sauce):
+    - CIQUAL has individual ingredients, not full recipes
+    - Search each component: "steak" then "sauce poivre"
+    - Sum the calories (typical portions: meat 150g, sauce 30g)
+
+    QUICK CALORIE LOOKUP (const_code 328 = kcal/100g):
+    SELECT f.alim_nom_fr, c.teneur as kcal_100g
+    FROM foods f JOIN composition c ON f.alim_code = c.alim_code
+    WHERE f.alim_code = <code> AND c.const_code = 328;
+
     KEY NUTRIENT CODES:
-    Energy: 327 (kJ), 328 (kcal)
-    Macros: 25000 (protein g), 31000 (carbs g), 40000 (fat g), 34100 (fiber g), 32000 (sugars g)
-    Minerals: 10110 (sodium mg), 10200 (calcium mg), 10260 (iron mg), 10190 (potassium mg)
-    Vitamins: 55400 (vit C mg), 56400 (vit D µg), 51330 (vit B12 µg), 56310 (vit E mg)
-    
-    The database is read-only. Use SELECT queries only.
+    Energy: 328 (kcal), 327 (kJ)
+    Macros: 25000 (protein), 31000 (carbs), 40000 (fat), 34100 (fiber), 32000 (sugars)
+    Minerals: 10110 (sodium), 10200 (calcium), 10260 (iron), 10190 (potassium), 10120 (magnesium)
+    Vitamins: 55100 (vit C), 52100 (vit D), 56600 (vit B12), 53100 (vit E), 56700 (folates)
+
+    SCHEMA:
+    - foods: alim_code (PK), alim_nom_fr, alim_nom_eng, alim_grp_code
+    - nutrients: const_code (PK), const_nom_fr, const_nom_eng, unit
+    - composition: alim_code, const_code, teneur (value per 100g), code_confiance
+    - food_groups: grp_code, grp_nom_fr, grp_nom_eng
+    - foods_fts: FTS5 virtual table for full-text search (alim_code, alim_nom_fr, alim_nom_eng)
     """
     
     # Ensure database exists
