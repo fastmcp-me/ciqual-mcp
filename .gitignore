@@ -29,3 +29,4 @@ htmlcov/
 *.sqlite
 *.sqlite3
 .venv/
+.pypi-token
