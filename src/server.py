@@ -11,6 +11,8 @@ import os
 from pathlib import Path
 import sys
 import logging
+import fcntl
+import time
 
 # Configure logging
 logging.basicConfig(
@@ -113,9 +115,73 @@ def main():
     
     Initializes the database if needed and starts the MCP server.
     """
-    # Check and update database if needed (auto-updates yearly)
-    from data_loader import initialize_database, should_update_database
-    
+    # Check and update database if needed
+    from data_loader import initialize_database
+    import sqlite3
+
+    def repair_fts5_if_corrupted():
+        """Repair FTS5 index if corrupted (e.g., from concurrent writes)
+
+        Uses file locking to prevent multiple instances from repairing simultaneously.
+        """
+        lock_file = DB_PATH.parent / ".ciqual.lock"
+        lock_fd = None
+
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            # Test FTS5 integrity
+            conn.execute("SELECT * FROM foods_fts LIMIT 1").fetchone()
+            conn.close()
+            return False  # No corruption
+        except sqlite3.OperationalError as e:
+            if "fts5" in str(e).lower() or "missing row" in str(e).lower():
+                logger.warning("FTS5 corruption detected, acquiring lock for repair...")
+                print("FTS5 corruption detected, acquiring lock for repair...", file=sys.stderr)
+
+                # Acquire exclusive lock
+                try:
+                    lock_fd = open(lock_file, 'w')
+                    fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX)
+                    logger.info("Lock acquired, rebuilding FTS5 index...")
+                    print("Lock acquired, rebuilding FTS5 index...", file=sys.stderr)
+
+                    # Double-check corruption still exists (another instance might have fixed it)
+                    try:
+                        conn = sqlite3.connect(DB_PATH)
+                        conn.execute("SELECT * FROM foods_fts LIMIT 1").fetchone()
+                        conn.close()
+                        logger.info("FTS5 already repaired by another instance")
+                        print("FTS5 already repaired by another instance", file=sys.stderr)
+                        return False
+                    except sqlite3.OperationalError:
+                        pass  # Still corrupted, proceed with repair
+
+                    # Rebuild FTS5 index
+                    conn = sqlite3.connect(DB_PATH)
+                    conn.execute("DELETE FROM foods_fts")
+                    conn.execute("INSERT INTO foods_fts SELECT alim_code, alim_nom_fr, alim_nom_eng FROM foods")
+                    conn.commit()
+                    conn.close()
+
+                    logger.info("FTS5 index rebuilt successfully")
+                    print("FTS5 index rebuilt successfully", file=sys.stderr)
+                    return True
+
+                except Exception as repair_error:
+                    logger.error("Failed to repair FTS5 index: %s", repair_error)
+                    print(f"Failed to repair FTS5 index: {repair_error}", file=sys.stderr)
+                    return False
+                finally:
+                    # Release lock
+                    if lock_fd:
+                        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
+                        lock_fd.close()
+                        try:
+                            lock_file.unlink()
+                        except:
+                            pass
+            raise  # Re-raise if not FTS5-related
+
     try:
         if not DB_PATH.exists():
             logger.info("First run: Downloading Ciqual database...")
@@ -123,12 +189,11 @@ def main():
             initialize_database()
             logger.info("Database initialized successfully!")
             print("Database initialized successfully!", file=sys.stderr)
-        elif should_update_database(DB_PATH):
-            logger.info("Database is outdated, updating from ANSES...")
-            print("Database is outdated, updating from ANSES...", file=sys.stderr)
-            initialize_database(force_update=True)
-            logger.info("Database updated successfully!")
-            print("Database updated successfully!", file=sys.stderr)
+        else:
+            # Disabled auto-update to prevent unnecessary rebuilds
+            # Database is static (ANSES data from 2020, no new updates expected)
+            # Auto-repair FTS5 index if corrupted (e.g., from concurrent writes)
+            repair_fts5_if_corrupted()
     except Exception as e:
         if not DB_PATH.exists():
             logger.error("Failed to initialize database: %s", e)
